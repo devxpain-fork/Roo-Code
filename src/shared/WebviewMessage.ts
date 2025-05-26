@@ -116,6 +116,8 @@ export interface WebviewMessage {
 		| "deleteCustomMode"
 		| "setopenAiCustomModelInfo"
 		| "openCustomModesSettings"
+		| "openCustomInstructionsFile"
+		| "refreshCustomInstructions"
 		| "checkpointDiff"
 		| "checkpointRestore"
 		| "deleteMcpServer"
