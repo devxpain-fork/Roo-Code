@@ -50,7 +50,7 @@ import { McpServerManager } from "../../services/mcp/McpServerManager"
 import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckpointService"
 import { CodeIndexManager } from "../../services/code-index/manager"
 import type { IndexProgressUpdate } from "../../services/code-index/interfaces/manager"
-import { fileExistsAtPath } from "../../utils/fs"
+import { fileExistsAtPath, safeReadFile } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
 import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
@@ -988,6 +988,16 @@ export class ClineProvider
 		await this.initClineWithHistoryItem({ ...historyItem, rootTask, parentTask })
 	}
 
+	// Settings Directory
+
+	async ensureSettingsDirectoryExists(): Promise<string> {
+		const { getSettingsDirectoryPath } = await import("../../utils/storage")
+		const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
+		return getSettingsDirectoryPath(globalStoragePath)
+	}
+
+	// Custom Instructions
+
 	async updateCustomInstructions(instructions?: string) {
 		const settingsDirPath = await this.ensureSettingsDirectoryExists()
 		const customInstructionsFilePath = path.join(settingsDirPath, GlobalFileNames.customInstructions)
@@ -1017,17 +1027,14 @@ export class ClineProvider
 	}
 
 	async refreshCustomInstructions(): Promise<void> {
+		const content = await this.readCustomInstructionsFromFile()
+		await this.updateCustomInstructions(content)
+	}
+
+	private async readCustomInstructionsFromFile(): Promise<string | undefined> {
 		const settingsDirPath = await this.ensureSettingsDirectoryExists()
 		const customInstructionsFilePath = path.join(settingsDirPath, GlobalFileNames.customInstructions)
-		let content: string | undefined = undefined
-		try {
-			content = await fs.readFile(customInstructionsFilePath, "utf-8")
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw error
-			}
-		}
-		await this.updateCustomInstructions(content)
+		return await safeReadFile(customInstructionsFilePath)
 	}
 
 	// MCP
@@ -1053,27 +1060,6 @@ export class ClineProvider
 			return path.join(os.homedir(), ".roo-code", "mcp")
 		}
 		return mcpServersDir
-	}
-
-	async ensureSettingsDirectoryExists(): Promise<string> {
-		const { getSettingsDirectoryPath } = await import("../../utils/storage")
-		const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
-		return getSettingsDirectoryPath(globalStoragePath)
-	}
-
-	private async readCustomInstructionsFromFile(): Promise<string | undefined> {
-		const settingsDirPath = await this.ensureSettingsDirectoryExists()
-		const customInstructionsFilePath = path.join(settingsDirPath, GlobalFileNames.customInstructions)
-
-		if (await fileExistsAtPath(customInstructionsFilePath)) {
-			try {
-				return await fs.readFile(customInstructionsFilePath, "utf-8")
-			} catch (error) {
-				this.log(`Error reading custom instructions file: ${error}`)
-				return undefined
-			}
-		}
-		return undefined
 	}
 
 	// OpenRouter
