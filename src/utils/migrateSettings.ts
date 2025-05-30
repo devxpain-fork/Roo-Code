@@ -40,9 +40,15 @@ export async function migrateSettings(
 			const customInstructionsFilePath = path.join(settingsDir, GlobalFileNames.customInstructions)
 
 			if (customInstructionsContent && !(await fileExistsAtPath(customInstructionsFilePath))) {
-				await fs.writeFile(customInstructionsFilePath, customInstructionsContent, "utf-8")
-				await context.globalState.update(customInstructionsKey, undefined) // Delete from GlobalState
-				outputChannel.appendLine("Migrated custom instructions from GlobalState to file.")
+				try {
+					await fs.writeFile(customInstructionsFilePath, customInstructionsContent, "utf-8")
+					await context.globalState.update(customInstructionsKey, undefined) // Delete from GlobalState
+					outputChannel.appendLine("Migrated custom instructions from GlobalState to file.")
+				} catch (migrationError) {
+					outputChannel.appendLine(
+						`Error migrating custom instructions: ${migrationError}. Data might still be in GlobalState.`,
+					)
+				}
 			} else {
 				outputChannel.appendLine(
 					`Skipping custom instructions migration: ${customInstructionsContent ? "file already exists" : "no data in GlobalState"}`,
