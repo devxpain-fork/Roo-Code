@@ -44,6 +44,8 @@ import {
 	CommandGroup,
 	Input,
 } from "@src/components/ui"
+import { GlobalContentIds } from "../../../../src/shared/globalContentIds"
+import { useRefreshableContent } from "../../hooks/useRefreshableContent"
 
 // Get all available groups that should show in prompts view
 const availableGroups = (Object.keys(TOOL_GROUPS) as ToolGroup[]).filter((group) => !TOOL_GROUPS[group].alwaysAvailable)
@@ -78,6 +80,10 @@ const ModesView = ({ onDone }: ModesViewProps) => {
 	// 2. Not syncing with the backend mode state (which would cause flickering)
 	// 3. Still sending the mode change to the backend for persistence
 	const [visualMode, setVisualMode] = useState(mode)
+
+	const { isRefreshing, showRefreshSuccess, refreshContent } = useRefreshableContent(
+		GlobalContentIds.customInstructions,
+	)
 
 	// Memoize modes to preserve array order
 	const modes = useMemo(() => getAllModes(customModes), [customModes])
@@ -1045,7 +1051,8 @@ const ModesView = ({ onDone }: ModesViewProps) => {
 								size="icon"
 								onClick={() => {
 									vscode.postMessage({
-										type: "openCustomInstructionsFile",
+										type: "openContent",
+										contentId: GlobalContentIds.customInstructions,
 									})
 								}}
 								title={t("prompts:globalCustomInstructions.openFile")}>
@@ -1054,17 +1061,19 @@ const ModesView = ({ onDone }: ModesViewProps) => {
 							<Button
 								variant="ghost"
 								size="icon"
-								onClick={() => {
-									vscode.postMessage({
-										type: "refreshCustomInstructions",
-									})
-								}}
-								title={t("prompts:globalCustomInstructions.refreshFile")}>
-								<span className="codicon codicon-refresh"></span>
+								onClick={refreshContent}
+								title={t("prompts:globalCustomInstructions.refreshFile")}
+								disabled={isRefreshing}>
+								<span
+									className={`codicon codicon-${isRefreshing ? "loading codicon-modifier-spin" : "refresh"}`}></span>
 							</Button>
 						</div>
 					</div>
-
+					{showRefreshSuccess && (
+						<div className="text-xs text-vscode-textLink-foreground mb-2">
+							{t("prompts:globalCustomInstructions.refreshSuccess")}
+						</div>
+					)}
 					<div className="text-sm text-vscode-descriptionForeground mb-2">
 						<Trans i18nKey="prompts:globalCustomInstructions.description">
 							<VSCodeLink
@@ -1084,7 +1093,7 @@ const ModesView = ({ onDone }: ModesViewProps) => {
 								((e as any).target as HTMLTextAreaElement).value
 							setCustomInstructions(value || undefined)
 							vscode.postMessage({
-								type: "customInstructions",
+								type: GlobalContentIds.customInstructions,
 								text: value.trim() || undefined,
 							})
 						}}

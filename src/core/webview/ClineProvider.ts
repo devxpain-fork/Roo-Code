@@ -37,6 +37,7 @@ import { Package } from "../../shared/package"
 import { findLast } from "../../shared/array"
 import { supportPrompt } from "../../shared/support-prompt"
 import { GlobalFileNames } from "../../shared/globalFileNames"
+import { GlobalContentIds } from "../../shared/globalContentIds"
 import { ExtensionMessage } from "../../shared/ExtensionMessage"
 import { Mode, defaultModeSlug } from "../../shared/modes"
 import { experimentDefault, experiments, EXPERIMENT_IDS } from "../../shared/experiments"
@@ -996,45 +997,75 @@ export class ClineProvider
 		return getSettingsDirectoryPath(globalStoragePath)
 	}
 
-	// Custom Instructions
+	private async getContentPath(contentId: string): Promise<string | undefined> {
+		const settingsDir = await this.ensureSettingsDirectoryExists()
+		switch (contentId) {
+			case GlobalContentIds.customInstructions:
+				return path.join(settingsDir, GlobalFileNames.customInstructions)
+			default:
+				this.log(`Unknown contentId: ${contentId}`)
+				return undefined
+		}
+	}
 
-	async updateCustomInstructions(instructions?: string) {
-		const settingsDirPath = await this.ensureSettingsDirectoryExists()
-		const customInstructionsFilePath = path.join(settingsDirPath, GlobalFileNames.customInstructions)
+	// Content
 
-		if (instructions && instructions.trim()) {
-			await fs.writeFile(customInstructionsFilePath, instructions.trim(), "utf-8")
+	async openContent(contentId: string): Promise<void> {
+		const filePath = await this.getContentPath(contentId)
+
+		if (!filePath) {
+			this.log(`File path could not be determined for contentId: ${contentId}`)
+			return
+		}
+
+		const uri = vscode.Uri.file(filePath)
+		await vscode.commands.executeCommand("vscode.open", uri, {
+			preview: false,
+			preserveFocus: true,
+		})
+		await vscode.commands.executeCommand("workbench.action.files.revert")
+	}
+
+	async refreshContent(contentId: string): Promise<void> {
+		const content = await this.readContent(contentId)
+		await this.updateContent(contentId, content)
+		this.postMessageToWebview({
+			type: "contentRefreshed",
+			contentId: contentId,
+			success: true, // Assuming success for now
+		})
+	}
+
+	async updateContent(contentId: string, content?: string) {
+		const filePath = await this.getContentPath(contentId)
+
+		if (!filePath) {
+			this.log(`File path could not be determined for contentId: ${contentId}`)
+			return
+		}
+
+		if (content && content.trim()) {
+			await fs.writeFile(filePath, content.trim(), "utf-8")
+			this.log(`Updated content file: ${filePath}`)
 		} else {
-			// If instructions are empty or undefined, delete the file if it exists
 			try {
-				await fs.unlink(customInstructionsFilePath)
+				await fs.unlink(filePath)
+				this.log(`Deleted content file: ${filePath}`)
 			} catch (error) {
-				// Ignore if file doesn't exist
-				if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+				if (error.code !== "ENOENT") {
+					this.log(`Error deleting content file: ${error.message}`)
 					throw error
 				}
 			}
 		}
+		// Update the webview state
 		await this.postStateToWebview()
 	}
 
-	async openCustomInstructionsFile(): Promise<void> {
-		const settingsDirPath = await this.ensureSettingsDirectoryExists()
-		const customInstructionsFilePath = path.join(settingsDirPath, GlobalFileNames.customInstructions)
-		const fileUri = vscode.Uri.file(customInstructionsFilePath)
-		await vscode.commands.executeCommand("vscode.open", fileUri, { preview: false, preserveFocus: true })
-		await vscode.commands.executeCommand("workbench.action.files.revert", fileUri)
-	}
+	private async readContent(contentId: string): Promise<string> {
+		const filePath = await this.getContentPath(contentId)
 
-	async refreshCustomInstructions(): Promise<void> {
-		const content = await this.readCustomInstructionsFromFile()
-		await this.updateCustomInstructions(content)
-	}
-
-	private async readCustomInstructionsFromFile(): Promise<string | undefined> {
-		const settingsDirPath = await this.ensureSettingsDirectoryExists()
-		const customInstructionsFilePath = path.join(settingsDirPath, GlobalFileNames.customInstructions)
-		return await safeReadFile(customInstructionsFilePath)
+		return filePath ? ((await safeReadFile(filePath)) ?? "") : ""
 	}
 
 	// MCP
@@ -1511,7 +1542,7 @@ export class ClineProvider
 		return {
 			apiConfiguration: providerSettings,
 			lastShownAnnouncementId: stateValues.lastShownAnnouncementId,
-			customInstructions: await this.readCustomInstructionsFromFile(),
+			customInstructions: await this.readContent(GlobalContentIds.customInstructions),
 			apiModelId: stateValues.apiModelId,
 			alwaysAllowReadOnly: stateValues.alwaysAllowReadOnly ?? false,
 			alwaysAllowReadOnlyOutsideWorkspace: stateValues.alwaysAllowReadOnlyOutsideWorkspace ?? false,
