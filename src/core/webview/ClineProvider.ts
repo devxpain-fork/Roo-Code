@@ -52,6 +52,7 @@ import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckp
 import { CodeIndexManager } from "../../services/code-index/manager"
 import type { IndexProgressUpdate } from "../../services/code-index/interfaces/manager"
 import { fileExistsAtPath, safeReadFile } from "../../utils/fs"
+import { openFile } from "../../integrations/misc/open-file"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
 import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
@@ -1018,11 +1019,7 @@ export class ClineProvider
 			return
 		}
 
-		const uri = vscode.Uri.file(filePath)
-		await vscode.commands.executeCommand("vscode.open", uri, {
-			preview: false,
-			preserveFocus: true,
-		})
+		await openFile(filePath, { create: true })
 		await vscode.commands.executeCommand("workbench.action.files.revert")
 	}
 
