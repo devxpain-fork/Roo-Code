@@ -52,7 +52,7 @@ export async function fileExistsAtPath(filePath: string): Promise<boolean> {
 export async function safeReadFile(filePath: string): Promise<string> {
 	try {
 		const content = await fs.readFile(filePath, "utf-8")
-		return content.trim()
+		return content ? content.trim() : ""
 	} catch (err) {
 		const errorCode = (err as NodeJS.ErrnoException).code
 		if (!errorCode || !["ENOENT", "EISDIR"].includes(errorCode)) {
