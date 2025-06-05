@@ -46,6 +46,7 @@ export function parseAssistantMessageV2(assistantMessage: string): AssistantMess
 	let currentToolUse: ToolUse | undefined = undefined
 	let currentParamValueStart = 0 // Index *after* the opening tag of the current param.
 	let currentParamName: ToolParamName | undefined = undefined
+	let currentInCodeBlock: boolean = false
 
 	// Precompute tags for faster lookups.
 	const toolUseOpenTags = new Map<string, ToolName>()
@@ -166,67 +167,74 @@ export function parseAssistantMessageV2(assistantMessage: string): AssistantMess
 			continue
 		}
 
-		// Parsing text / looking for tool start.
-		if (!currentToolUse) {
-			// Check if starting a new tool use.
-			let startedNewTool = false
+		// Check for markdown code block toggling.
+		if (assistantMessage.startsWith("```", currentCharIndex)) {
+			currentInCodeBlock = !currentInCodeBlock
+		}
 
-			for (const [tag, toolName] of toolUseOpenTags.entries()) {
-				if (
-					currentCharIndex >= tag.length - 1 &&
-					assistantMessage.startsWith(tag, currentCharIndex - tag.length + 1)
-				) {
-					// End current text block if one was active.
-					if (currentTextContent) {
-						currentTextContent.content = assistantMessage
-							.slice(
-								currentTextContentStart, // From where text started.
-								currentCharIndex - tag.length + 1, // To before the tool tag starts.
-							)
-							.trim()
+		if (!currentInCodeBlock) {
+			// Parsing text / looking for tool start.
+			if (!currentToolUse) {
+				// Check if starting a new tool use.
+				let startedNewTool = false
 
-						currentTextContent.partial = false // Ended because tool started.
+				for (const [tag, toolName] of toolUseOpenTags.entries()) {
+					if (
+						currentCharIndex >= tag.length - 1 &&
+						assistantMessage.startsWith(tag, currentCharIndex - tag.length + 1)
+					) {
+						// End current text block if one was active.
+						if (currentTextContent) {
+							currentTextContent.content = assistantMessage
+								.slice(
+									currentTextContentStart, // From where text started.
+									currentCharIndex - tag.length + 1, // To before the tool tag starts.
+								)
+								.trim()
 
-						if (currentTextContent.content.length > 0) {
-							contentBlocks.push(currentTextContent)
+							currentTextContent.partial = false // Ended because tool started.
+
+							if (currentTextContent.content.length > 0) {
+								contentBlocks.push(currentTextContent)
+							}
+
+							currentTextContent = undefined
+						} else {
+							// Check for any text between the last block and this tag.
+							const potentialText = assistantMessage
+								.slice(
+									currentTextContentStart, // From where text *might* have started.
+									currentCharIndex - tag.length + 1, // To before the tool tag starts.
+								)
+								.trim()
+
+							if (potentialText.length > 0) {
+								contentBlocks.push({
+									type: "text",
+									content: potentialText,
+									partial: false,
+								})
+							}
 						}
 
-						currentTextContent = undefined
-					} else {
-						// Check for any text between the last block and this tag.
-						const potentialText = assistantMessage
-							.slice(
-								currentTextContentStart, // From where text *might* have started.
-								currentCharIndex - tag.length + 1, // To before the tool tag starts.
-							)
-							.trim()
-
-						if (potentialText.length > 0) {
-							contentBlocks.push({
-								type: "text",
-								content: potentialText,
-								partial: false,
-							})
+						// Start the new tool use.
+						currentToolUse = {
+							type: "tool_use",
+							name: toolName,
+							params: {},
+							partial: true, // Assume partial until closing tag is found.
 						}
+
+						currentToolUseStart = currentCharIndex + 1 // Tool content starts after the opening tag.
+						startedNewTool = true
+
+						break
 					}
-
-					// Start the new tool use.
-					currentToolUse = {
-						type: "tool_use",
-						name: toolName,
-						params: {},
-						partial: true, // Assume partial until closing tag is found.
-					}
-
-					currentToolUseStart = currentCharIndex + 1 // Tool content starts after the opening tag.
-					startedNewTool = true
-
-					break
 				}
-			}
 
-			if (startedNewTool) {
-				continue // Handled start of tool, move to next char.
+				if (startedNewTool) {
+					continue // Handled start of tool, move to next char.
+				}
 			}
 
 			// If not starting a tool, it must be text content.
