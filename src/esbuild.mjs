@@ -39,6 +39,12 @@ async function main() {
 		fs.rmSync(distDir, { recursive: true, force: true })
 	}
 
+	// Clean the vscode-material-icons assets directory to prevent ENOTEMPTY errors
+	const vscodeMaterialIconsDir = path.join(srcDir, "assets/vscode-material-icons")
+	if (fs.existsSync(vscodeMaterialIconsDir)) {
+		console.log(`[${name}] Cleaning vscode-material-icons assets directory: ${vscodeMaterialIconsDir}`)
+		fs.rmSync(vscodeMaterialIconsDir, { recursive: true, force: true })
+	}
 	/**
 	 * @type {import('esbuild').Plugin[]}
 	 */
