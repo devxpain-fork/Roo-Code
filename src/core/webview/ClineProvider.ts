@@ -51,8 +51,7 @@ import { McpServerManager } from "../../services/mcp/McpServerManager"
 import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckpointService"
 import { CodeIndexManager } from "../../services/code-index/manager"
 import type { IndexProgressUpdate } from "../../services/code-index/interfaces/manager"
-import { fileExistsAtPath, safeReadFile } from "../../utils/fs"
-import { openFile } from "../../integrations/misc/open-file"
+import { fileExistsAtPath } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
 import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
@@ -67,6 +66,7 @@ import { webviewMessageHandler } from "./webviewMessageHandler"
 import { WebviewMessage } from "../../shared/WebviewMessage"
 import { EMBEDDING_MODEL_PROFILES } from "../../shared/embeddingModels"
 import { ProfileValidator } from "../../shared/ProfileValidator"
+import { ContentManager } from "../../services/content/ContentManager"
 
 /**
  * https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -103,6 +103,7 @@ export class ClineProvider
 		return this._workspaceTracker
 	}
 	protected mcpHub?: McpHub // Change from private to protected
+	public contentManager: ContentManager // Declare private member
 
 	public isViewLaunched = false
 	public settingsImportedAt?: number
@@ -149,6 +150,14 @@ export class ClineProvider
 			.catch((error) => {
 				this.log(`Failed to initialize MCP Hub: ${error}`)
 			})
+
+		// Instantiate ContentManager
+		this.contentManager = new ContentManager({
+			log: this.log.bind(this),
+			postMessageToWebview: this.postMessageToWebview.bind(this),
+			postStateToWebview: this.postStateToWebview.bind(this),
+			globalStorageUriFsPath: this.contextProxy.globalStorageUri.fsPath,
+		})
 	}
 
 	// Adds a new Cline instance to clineStack, marking the start of a new task.
@@ -1009,62 +1018,6 @@ export class ClineProvider
 		}
 	}
 
-	// Content
-
-	async openContent(contentId: string): Promise<void> {
-		const filePath = await this.getContentPath(contentId)
-
-		if (!filePath) {
-			this.log(`File path could not be determined for contentId: ${contentId}`)
-			return
-		}
-
-		await openFile(filePath, { create: true })
-		await vscode.commands.executeCommand("workbench.action.files.revert")
-	}
-
-	async refreshContent(contentId: string): Promise<void> {
-		const content = await this.readContent(contentId)
-		await this.updateContent(contentId, content)
-		this.postMessageToWebview({
-			type: "contentRefreshed",
-			contentId: contentId,
-			success: true, // Assuming success for now
-		})
-	}
-
-	async updateContent(contentId: string, content?: string) {
-		const filePath = await this.getContentPath(contentId)
-
-		if (!filePath) {
-			this.log(`File path could not be determined for contentId: ${contentId}`)
-			return
-		}
-
-		if (content && content.trim()) {
-			await fs.writeFile(filePath, content.trim(), "utf-8")
-			this.log(`Updated content file: ${filePath}`)
-		} else {
-			try {
-				await fs.unlink(filePath)
-				this.log(`Deleted content file: ${filePath}`)
-			} catch (error) {
-				if (error.code !== "ENOENT") {
-					this.log(`Error deleting content file: ${error.message}`)
-					throw error
-				}
-			}
-		}
-		// Update the webview state
-		await this.postStateToWebview()
-	}
-
-	private async readContent(contentId: string): Promise<string> {
-		const filePath = await this.getContentPath(contentId)
-
-		return filePath ? ((await safeReadFile(filePath)) ?? "") : ""
-	}
-
 	// MCP
 
 	async ensureMcpServersDirectoryExists(): Promise<string> {
@@ -1539,7 +1492,7 @@ export class ClineProvider
 		return {
 			apiConfiguration: providerSettings,
 			lastShownAnnouncementId: stateValues.lastShownAnnouncementId,
-			customInstructions: await this.readContent(GlobalContentIds.customInstructions),
+			customInstructions: await this.contentManager.readContent(GlobalContentIds.customInstructions),
 			apiModelId: stateValues.apiModelId,
 			alwaysAllowReadOnly: stateValues.alwaysAllowReadOnly ?? false,
 			alwaysAllowReadOnlyOutsideWorkspace: stateValues.alwaysAllowReadOnlyOutsideWorkspace ?? false,

@@ -131,19 +131,19 @@ export const webviewMessageHandler = async (provider: ClineProvider, message: We
 			await provider.initClineWithTask(message.text, message.images)
 			break
 		case "customInstructions":
-			await provider.updateContent(GlobalContentIds.customInstructions, message.text)
+			await provider.contentManager.updateContent(GlobalContentIds.customInstructions, message.text)
 			break
 		case "openContent":
 			if (message.contentId) {
 				// Check for contentId instead of filePath
-				await provider.openContent(message.contentId)
+				await provider.contentManager.openContent(message.contentId)
 			} else {
 				console.error("openContent message missing contentId")
 			}
 			break
 		case "refreshContent":
 			if (message.contentId) {
-				await provider.refreshContent(message.contentId)
+				await provider.contentManager.refreshContent(message.contentId)
 			} else {
 				// Handle error or log if contentId is missing
 				console.error("refreshContent message missing contentId")
